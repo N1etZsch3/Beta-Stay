@@ -127,7 +127,18 @@ async def stream_message(
 
                 # --- 工具执行完成 ---
                 elif kind == "on_tool_end":
-                    tool_output = event["data"].get("output")
+                    raw_output = event["data"].get("output")
+                    # LangGraph astream_events v2 返回 ToolMessage 对象
+                    # .content 是 JSON 字符串，需要解析
+                    tool_output = None
+                    if hasattr(raw_output, "content"):
+                        try:
+                            tool_output = json.loads(raw_output.content)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    elif isinstance(raw_output, dict):
+                        tool_output = raw_output
+
                     if isinstance(tool_output, dict):
                         # 待确认操作 → 存入 ActionStore，发送 action 事件
                         if tool_output.get("pending_confirmation"):
