@@ -69,3 +69,31 @@ async def test_get_conversation_history(client):
     assert response.status_code == 200
     messages = response.json()
     assert len(messages) >= 2  # user message + assistant reply
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation(client):
+    # Create a conversation
+    conv_resp = await client.post(
+        "/api/v1/chat/conversations", json={"title": "待删除会话"}
+    )
+    assert conv_resp.status_code == 200
+    conv_id = conv_resp.json()["id"]
+
+    # Delete it
+    del_resp = await client.delete(f"/api/v1/chat/conversations/{conv_id}")
+    assert del_resp.status_code == 200
+    assert del_resp.json()["success"] is True
+
+    # Verify it's gone from the list
+    list_resp = await client.get("/api/v1/chat/conversations")
+    ids = [c["id"] for c in list_resp.json()]
+    assert conv_id not in ids
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_not_found(client):
+    resp = await client.delete(
+        "/api/v1/chat/conversations/00000000-0000-0000-0000-000000000000"
+    )
+    assert resp.status_code == 404

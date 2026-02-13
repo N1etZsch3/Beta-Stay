@@ -1,14 +1,29 @@
 import json
 from typing import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.conversation_service import get_messages, save_message
-from app.tools.context import db_session_var
+
 from app.services.action_store import save_pending_action
+from app.services.conversation_service import (
+    count_messages,
+    get_messages,
+    save_message,
+    update_conversation_title,
+)
+from app.tools.context import db_session_var
 
 
-async def process_message(db: AsyncSession, conversation_id: str, user_content: str) -> dict:
+async def process_message(
+    db: AsyncSession, conversation_id: str, user_content: str
+) -> dict:
     """处理用户消息（非流式）：保存消息 → 构建历史 → 调用Agent → 保存回复"""
     await save_message(db, conversation_id, "user", user_content)
+
+    # 首条用户消息时，自动设置会话标题为消息前10个字
+    user_msg_count = await count_messages(db, conversation_id, role="user")
+    if user_msg_count == 1:
+        title = user_content[:10]
+        await update_conversation_title(db, conversation_id, title)
 
     history = await get_messages(db, conversation_id)
     messages = [{"role": msg.role, "content": msg.content} for msg in history]
@@ -49,7 +64,9 @@ async def process_message(db: AsyncSession, conversation_id: str, user_content: 
     }
 
 
-async def stream_message(db: AsyncSession, conversation_id: str, user_content: str) -> AsyncGenerator[str, None]:
+async def stream_message(
+    db: AsyncSession, conversation_id: str, user_content: str
+) -> AsyncGenerator[str, None]:
     """流式处理用户消息，yield SSE格式事件
 
     SSE 事件类型:
@@ -60,6 +77,12 @@ async def stream_message(db: AsyncSession, conversation_id: str, user_content: s
     - done: 流结束，附带完整消息信息
     """
     await save_message(db, conversation_id, "user", user_content)
+
+    # 首条用户消息时，自动设置会话标题为消息前10个字
+    user_msg_count = await count_messages(db, conversation_id, role="user")
+    if user_msg_count == 1:
+        title = user_content[:10]
+        await update_conversation_title(db, conversation_id, title)
 
     history = await get_messages(db, conversation_id)
     messages = [{"role": msg.role, "content": msg.content} for msg in history]
@@ -123,7 +146,9 @@ async def stream_message(db: AsyncSession, conversation_id: str, user_content: s
                             yield f"event: action\ndata: {json.dumps(action_event, ensure_ascii=False)}\n\n"
 
                         # 定价结果 → 发送 pricing 事件
-                        elif tool_output.get("success") and tool_output.get("pricing_record_id"):
+                        elif tool_output.get("success") and tool_output.get(
+                            "pricing_record_id"
+                        ):
                             pricing_event = {
                                 "pricing_record_id": tool_output["pricing_record_id"],
                                 "property_id": tool_output["property_id"],
@@ -150,7 +175,9 @@ async def stream_message(db: AsyncSession, conversation_id: str, user_content: s
     if pending_actions:
         tool_calls_meta = {"pending_actions": pending_actions}
 
-    reply = await save_message(db, conversation_id, "assistant", full_content, tool_calls=tool_calls_meta)
+    reply = await save_message(
+        db, conversation_id, "assistant", full_content, tool_calls=tool_calls_meta
+    )
 
     done_data = {
         "id": reply.id,

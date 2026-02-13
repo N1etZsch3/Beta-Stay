@@ -4,7 +4,12 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.services import chat_service, conversation_service, property_service, feedback_service
+from app.services import (
+    chat_service,
+    conversation_service,
+    feedback_service,
+    property_service,
+)
 from app.services.action_store import pop_pending_action
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -48,6 +53,14 @@ async def create_conversation(
 @router.get("/conversations", response_model=list[ConversationResponse])
 async def list_conversations(db: AsyncSession = Depends(get_db)):
     return await conversation_service.list_conversations(db)
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str, db: AsyncSession = Depends(get_db)):
+    success = await conversation_service.delete_conversation(db, conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"success": True}
 
 
 @router.post("/conversations/{conversation_id}/messages")
@@ -117,7 +130,12 @@ async def confirm_action(
             "assistant",
             f"房源「{result.name}」已成功录入（ID: {result.id}）",
         )
-        return {"success": True, "type": "property", "id": result.id, "name": result.name}
+        return {
+            "success": True,
+            "type": "property",
+            "id": result.id,
+            "name": result.name,
+        }
 
     elif action_type == "record_feedback":
         result = await feedback_service.create_feedback(db, action_data)

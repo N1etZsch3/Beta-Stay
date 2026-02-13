@@ -29,6 +29,13 @@ export function confirmAction(conversationId: string, actionId: string) {
   })
 }
 
+export function deleteConversation(conversationId: string) {
+  return request({
+    url: `/chat/conversations/${conversationId}`,
+    method: 'DELETE',
+  })
+}
+
 export interface StreamCallbacks {
   onThinking?: (chunk: string) => void
   onContent?: (chunk: string) => void

@@ -1,37 +1,59 @@
 <template>
   <view class="chat-page">
-    <!-- Header -->
-    <view class="chat-header">
-      <view class="header-left" @click="showDrawer = !showDrawer">
-        <text class="menu-icon">☰</text>
-      </view>
-      <text class="header-title">{{ currentTitle }}</text>
-      <view class="header-right" @click="handleNewChat">
-        <text class="new-icon">+</text>
-      </view>
-    </view>
-
-    <!-- Conversation drawer -->
-    <view v-if="showDrawer" class="drawer-mask" @click="showDrawer = false">
-      <view class="drawer-panel" @click.stop>
-        <view class="drawer-title">历史会话</view>
-        <scroll-view scroll-y class="drawer-list">
-          <view
-            v-for="conv in chatStore.conversations"
-            :key="conv.id"
-            :class="['drawer-item', { active: conv.id === chatStore.currentConversationId }]"
-            @click="handleSwitchConv(conv.id)"
-          >
-            <text class="drawer-item-title">{{ conv.title || '新对话' }}</text>
-          </view>
-          <view v-if="chatStore.conversations.length === 0" class="drawer-empty">
-            <text>暂无历史会话</text>
-          </view>
-        </scroll-view>
+    <!-- Custom Header -->
+    <view class="custom-header">
+      <view class="status-bar-placeholder"></view>
+      <view class="header-content">
+        <view class="header-left" @click="toggleSidebar">
+          <text class="header-icon">≡</text>
+        </view>
+        <text class="header-title">智能助手</text>
+        <view class="header-right" @click="handleNewChat">
+          <text class="header-icon">＋</text>
+        </view>
       </view>
     </view>
 
-    <!-- Message area -->
+    <!-- Sidebar (Drawer) -->
+    <view class="sidebar-mask" :class="{ show: showSidebar }" @click="toggleSidebar"></view>
+    <view class="sidebar-drawer" :class="{ show: showSidebar }">
+      <view class="sidebar-header">
+        <text class="sidebar-title">历史会话</text>
+      </view>
+      <scroll-view scroll-y class="sidebar-content">
+        <view 
+          v-for="conv in chatStore.conversations" 
+          :key="conv.id"
+          class="sidebar-item"
+          :class="{ active: conv.id === chatStore.currentConversationId }"
+          @click="switchChat(conv.id)"
+        >
+          <view class="item-icon-wrapper">
+             <text class="item-icon">💬</text>
+          </view>
+          <view class="item-info">
+             <text class="conv-title">{{ conv.title || '新对话' }}</text>
+             <text class="conv-date">{{ formatDate(conv.last_active_at) }}</text>
+          </view>
+          <view class="delete-btn" @click.stop="handleDeleteChat(conv.id)">
+            <text class="delete-icon">🗑️</text>
+          </view>
+        </view>
+        
+        <view v-if="chatStore.conversations.length === 0" class="empty-history">
+          <text>暂无历史会话</text>
+        </view>
+      </scroll-view>
+      
+      <view class="sidebar-footer">
+        <view class="user-profile">
+          <view class="avatar">U</view>
+          <text class="username">BetaStay User</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Message area (Flex Item: Grow) -->
     <scroll-view
       scroll-y
       class="message-list"
@@ -44,7 +66,7 @@
            <view class="welcome-icon">✨</view>
           <text class="welcome-title">你好, 我是 BetaStay 助手</text>
           <text class="welcome-desc">我可以帮你分析房源定价、管理房源信息，或回答民宿运营相关问题。</text>
-
+          
           <view class="suggestion-chips">
             <view class="chip" @click="quickAsk('帮我分析一下我的房源价格')">
               <text class="chip-icon">💰</text>
@@ -67,7 +89,6 @@
             :message="msg"
             :is-streaming="idx === chatStore.messages.length - 1 && chatStore.loading"
           />
-          <!-- 定价卡片（跟在助手消息后面） -->
           <PriceCard
             v-if="msg.role === 'assistant' && msg.pricing"
             :pricing="msg.pricing"
@@ -77,31 +98,16 @@
           />
         </template>
 
-        <!-- Loading / Thinking Indicator (Implicit in last message now, but keep fallback) -->
+        <!-- Loading / Thinking Indicator -->
         <view v-if="chatStore.loading && chatStore.messages.length === 0" class="status-tip">
            <text>AI正在准备...</text>
         </view>
-
-        <!-- Bottom Spacer -->
-        <view class="scroll-bottom-spacer" />
       </view>
     </scroll-view>
 
-    <!-- Confirm panel -->
-    <ConfirmPanel
-      :visible="!!chatStore.pendingAction"
-      :data="chatStore.pendingAction?.display?.items || {}"
-      @confirm="handleConfirmAction"
-      @cancel="chatStore.cancelPendingAction()"
-    />
-
-    <!-- Floating Input Area -->
+    <!-- Input Section (Static Flex Item) -->
     <view class="input-section">
       <view class="input-card">
-        <view class="icon-btn-left">
-          <text class="action-icon">⊕</text>
-        </view>
-
         <input
           v-model="inputText"
           class="chat-input"
@@ -111,14 +117,10 @@
           :disabled="chatStore.loading"
           placeholder-style="color: #94A3B8;"
         />
-
+        
         <view class="right-actions">
-           <view v-if="!inputText" class="icon-btn-right">
-             <text class="action-icon">🎤</text>
-           </view>
-           <view
-             v-else
-             :class="['send-btn', { disabled: chatStore.loading }]"
+           <view 
+             :class="['send-btn', { disabled: !inputText.trim() || chatStore.loading }]"
              @click="handleSend"
            >
             <text class="send-icon">↑</text>
@@ -126,11 +128,19 @@
         </view>
       </view>
     </view>
+    
+    <!-- Confirm panel (Fixed Overlay) -->
+    <ConfirmPanel
+      :visible="!!chatStore.pendingAction"
+      :data="chatStore.pendingAction?.display?.items || {}"
+      @confirm="handleConfirmAction"
+      @cancel="chatStore.cancelPendingAction()"
+    />
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, computed } from 'vue'
+import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChatStore } from '../../stores/chat'
 import ChatBubble from '../../components/ChatBubble.vue'
 import PriceCard from '../../components/PriceCard.vue'
@@ -139,13 +149,7 @@ import ConfirmPanel from '../../components/ConfirmPanel.vue'
 const chatStore = useChatStore()
 const inputText = ref('')
 const scrollTop = ref(0)
-const showDrawer = ref(false)
-
-const currentTitle = computed(() => {
-  if (!chatStore.currentConversationId) return '新对话'
-  const conv = chatStore.conversations.find((c: any) => c.id === chatStore.currentConversationId)
-  return conv?.title || '对话'
-})
+const showSidebar = ref(false)
 
 onMounted(() => {
   chatStore.loadConversations()
@@ -168,7 +172,7 @@ watch(() => chatStore.thinking, async () => {
 })
 
 function scrollToBottom() {
-  scrollTop.value = scrollTop.value === 99998 ? 99999 : 99998
+  scrollTop.value = scrollTop.value + 1
 }
 
 async function handleSend() {
@@ -176,6 +180,9 @@ async function handleSend() {
   if (!text || chatStore.loading) return
 
   inputText.value = ''
+  // 立即滚动到底部，让用户消息可见
+  await nextTick()
+  scrollToBottom()
   try {
     await chatStore.sendMessage(text)
   } catch {
@@ -186,6 +193,38 @@ async function handleSend() {
 function quickAsk(text: string) {
   inputText.value = text
   handleSend()
+}
+
+// --- Toggle Sidebar ---
+function toggleSidebar() {
+  showSidebar.value = !showSidebar.value
+}
+
+// --- Chat Management ---
+async function handleNewChat() {
+  await chatStore.newConversation()
+  showSidebar.value = false
+}
+
+async function switchChat(id: string) {
+  if (id === chatStore.currentConversationId) {
+    showSidebar.value = false
+    return
+  }
+  await chatStore.switchConversation(id)
+  showSidebar.value = false
+}
+
+async function handleDeleteChat(id: string) {
+  uni.showModal({
+    title: '确认删除',
+    content: '删除后无法恢复，确认删除该会话？',
+    success: async (res) => {
+      if (res.confirm) {
+        await chatStore.deleteConversation(id)
+      }
+    },
+  })
 }
 
 // --- PriceCard handlers ---
@@ -214,132 +253,273 @@ async function handleConfirmAction() {
   }
 }
 
-// --- Conversation drawer handlers ---
-function handleNewChat() {
-  chatStore.newConversation()
-  showDrawer.value = false
-}
-
-async function handleSwitchConv(convId: string) {
-  await chatStore.switchConversation(convId)
-  showDrawer.value = false
-  await nextTick()
-  scrollToBottom()
+function formatDate(isoStr: string) {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 </script>
 
 <style scoped lang="scss">
 .chat-page {
   background-color: $uni-bg-color-grey;
-  height: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
-.chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24rpx;
-  height: 88rpx;
-  background: #fff;
-  border-bottom: 1rpx solid $uni-border-color;
+/* Custom Header */
+.custom-header {
+  background-color: #1a1a1a; 
+  color: #fff;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   flex-shrink: 0;
 }
 
-.header-left, .header-right {
-  width: 72rpx;
-  height: 72rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.status-bar-placeholder {
+  height: var(--status-bar-height);
+  width: 100%;
 }
 
-.menu-icon, .new-icon {
-  font-size: 40rpx;
-  color: $uni-text-color;
+.header-content {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
 }
 
 .header-title {
-  font-size: 32rpx;
+  font-size: 16px; 
   font-weight: 600;
-  color: $uni-color-title;
+  color: #fff;
 }
 
-.drawer-mask {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.4);
-  z-index: 998;
-}
-
-.drawer-panel {
-  position: absolute;
-  top: 0; left: 0; bottom: 0;
-  width: 70%;
-  max-width: 600rpx;
-  background: #fff;
-  padding: 40rpx 0;
-  box-shadow: 4rpx 0 16rpx rgba(0,0,0,0.1);
-}
-
-.drawer-title {
-  font-size: 32rpx;
-  font-weight: 700;
-  padding: 0 32rpx 24rpx;
-  border-bottom: 1rpx solid $uni-border-color;
-  color: $uni-color-title;
-}
-
-.drawer-list {
-  height: calc(100% - 80rpx);
-}
-
-.drawer-item {
-  padding: 24rpx 32rpx;
-  border-bottom: 1rpx solid #f5f5f5;
-  transition: background 0.2s;
-
-  &.active {
-    background: rgba($uni-color-primary, 0.08);
-  }
-
+.header-left, .header-right {
+  width: 40px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
   &:active {
-    background: $uni-bg-color-hover;
+    opacity: 0.7;
   }
 }
 
-.drawer-item-title {
-  font-size: 28rpx;
-  color: $uni-text-color;
+.header-icon {
+  font-size: 24px; 
+  font-weight: 300;
+  color: #fff;
+}
+
+/* Sidebar */
+.sidebar-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 900;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  
+  &.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px; 
+  max-width: 80%;
+  background: #1c1c1e; 
+  z-index: 901;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+  
+  &.show {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-header {
+  height: calc(56px + var(--status-bar-height)); 
+  padding-top: var(--status-bar-height);
+  padding-left: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-title {
+  color: #fff;
+  font-size: 24px; 
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-content {
+  flex: 1;
+  height: 0;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Sidebar Item - Hover/Active Only */
+.sidebar-item {
+  padding: 12px 10px 12px 16px;
+  margin-bottom: 4px; 
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent; 
+  transition: all 0.2s;
+  
+  &:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  
+  &.active {
+    background: transparent; 
+    
+    .conv-title {
+      color: $uni-color-primary;
+      font-weight: 600;
+    }
+    
+    .item-icon-wrapper {
+        background: $uni-color-primary;
+    }
+    
+    .item-icon {
+        color: #fff;
+    }
+  }
+}
+
+.item-icon-wrapper {
+  width: 40px; 
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.1);
+  transition: background 0.2s;
+}
+
+.item-icon {
+  font-size: 20px;
+  color: #8e8e93;
+}
+
+.item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.conv-title {
+  font-size: 16px;
+  color: #e5e5e7;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.drawer-empty {
-  padding: 60rpx 32rpx;
-  text-align: center;
-  color: $uni-text-color-placeholder;
-  font-size: 26rpx;
+.conv-date {
+  font-size: 12px;
+  color: #8e8e93;
 }
 
+.delete-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.4;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  
+  &:active {
+    opacity: 1;
+    background: rgba(255, 59, 48, 0.15);
+  }
+}
+
+.delete-icon {
+  font-size: 16px;
+}
+
+.empty-history {
+  padding: 40px;
+  text-align: center;
+  color: #636366;
+  font-size: 14px;
+}
+
+/* Footer with TabBar clearance */
+.sidebar-footer {
+  padding: 24px;
+  /* Add padding for TabBar + Safe Area */
+  padding-bottom: calc(50px + 24px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(50px + 24px + env(safe-area-inset-bottom));
+  background: rgba(28, 28, 30, 0.9);
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.username {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* Chat Area - Flex Item */
 .message-list {
   flex: 1;
-  height: 0;
+  height: 0; 
   width: 100%;
 }
 
 .list-padding {
   padding: 32rpx 24rpx;
-  padding-bottom: 40rpx;
+  padding-bottom: 20rpx; /* Minimal padding */
 }
 
-.scroll-bottom-spacer {
-  height: 180rpx; /* Space for floating input */
-}
-
+/* Empty State */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -363,12 +543,8 @@ async function handleSwitchConv(convId: string) {
 .welcome-title {
   font-size: 40rpx;
   font-weight: 700;
-  color: #1E293B; /* Slate 800 */
+  color: #1E293B; 
   margin-bottom: 16rpx;
-  background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .welcome-desc {
@@ -400,7 +576,7 @@ async function handleSwitchConv(convId: string) {
   align-items: center;
   gap: 12rpx;
   transition: all 0.2s;
-
+  
   &:active {
     background: #F1F5F9;
     transform: scale(0.98);
@@ -409,17 +585,17 @@ async function handleSwitchConv(convId: string) {
 
 .chip-icon { font-size: 32rpx; }
 
-/* Floating Input Section */
+/* Input Section - Static Flex Item */
 .input-section {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
+  background: linear-gradient(to top, rgba(248,250,252, 1) 90%, rgba(248,250,252, 0) 100%);
   padding: 24rpx 32rpx;
-  padding-bottom: calc(24rpx + constant(safe-area-inset-bottom));
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, rgba(248,250,252, 1) 80%, rgba(248,250,252, 0) 100%);
-  z-index: 100;
+  
+  /* Robust positioning above TabBar */
+  padding-bottom: calc(24rpx + var(--window-bottom) + constant(safe-area-inset-bottom));
+  padding-bottom: calc(24rpx + var(--window-bottom) + env(safe-area-inset-bottom));
+  
+  z-index: 50;
 }
 
 .input-card {
@@ -432,7 +608,7 @@ async function handleSwitchConv(convId: string) {
   box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.08);
   border: 1rpx solid #E2E8F0;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
+  
   &:focus-within {
     box-shadow: 0 12rpx 32rpx rgba(26, 75, 156, 0.1);
     border-color: rgba(26, 75, 156, 0.2);
@@ -468,16 +644,16 @@ async function handleSwitchConv(convId: string) {
   width: 72rpx;
   height: 72rpx;
   background: $uni-color-primary;
-  border-radius: 36rpx; /* Pill/Circle */
+  border-radius: 36rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-
+  
   &.disabled {
     background: #CBD5E1;
   }
-
+  
   &:active:not(.disabled) {
     transform: scale(0.9);
   }

@@ -60,7 +60,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       // Create conversation if needed
       if (!currentConversationId.value) {
-        const conv = await chatApi.createConversation('新对话')
+        const conv = await chatApi.createConversation()
         conversations.value.unshift(conv)
         currentConversationId.value = conv.id
       }
@@ -115,6 +115,8 @@ export const useChatStore = defineStore('chat', () => {
                   pricingResult.value = null
                 }
               }
+              // 刷新会话列表以获取后端自动设置的标题
+              loadConversations()
               resolve()
             },
             onError: (err) => {
@@ -184,11 +186,23 @@ export const useChatStore = defineStore('chat', () => {
     pendingAction.value = null
   }
 
+  async function deleteConversation(conversationId: string) {
+    await chatApi.deleteConversation(conversationId)
+    conversations.value = conversations.value.filter(c => c.id !== conversationId)
+    // 如果删除的是当前会话，重置状态
+    if (currentConversationId.value === conversationId) {
+      currentConversationId.value = null
+      messages.value = []
+      pendingAction.value = null
+      pricingResult.value = null
+    }
+  }
+
   return {
     conversations, currentConversationId, messages, loading, thinking, error,
     pendingAction, pricingResult,
     createConversation, sendMessage, loadMessages,
     loadConversations, switchConversation, newConversation,
-    confirmPendingAction, cancelPendingAction,
+    confirmPendingAction, cancelPendingAction, deleteConversation,
   }
 })
