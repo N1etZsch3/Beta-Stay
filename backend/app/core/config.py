@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     # Dashscope
     DASHSCOPE_API_KEY: str = ""
-    DASHSCOPE_MODEL: str = "qwen-max"
+    DASHSCOPE_MODEL: str = "qwen3-max-2026-01-23"
+    DASHSCOPE_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
     # JWT
     SECRET_KEY: str = "betastay-secret-key-change-in-production"
