@@ -21,6 +21,41 @@ export function getMessages(conversationId: string) {
   return request({ url: `/chat/conversations/${conversationId}/messages` })
 }
 
+export function confirmAction(conversationId: string, actionId: string) {
+  return request({
+    url: `/chat/conversations/${conversationId}/confirm`,
+    method: 'POST',
+    data: { action_id: actionId },
+  })
+}
+
+export interface StreamCallbacks {
+  onThinking?: (chunk: string) => void
+  onContent?: (chunk: string) => void
+  onAction?: (data: {
+    action_id: string
+    action_type: string
+    display: { title: string; items: Record<string, string> }
+    data: Record<string, any>
+  }) => void
+  onPricing?: (data: {
+    pricing_record_id: number
+    property_id: number
+    target_date: string
+    conservative_price: number
+    suggested_price: number
+    aggressive_price: number
+  }) => void
+  onDone?: (data: {
+    id: number
+    content: string
+    thinking: string
+    created_at: string
+    pending_actions: any[]
+  }) => void
+  onError?: (error: Error) => void
+}
+
 /**
  * 流式发送消息 (SSE)
  * 使用 fetch + ReadableStream 读取 SSE 事件流
@@ -28,12 +63,7 @@ export function getMessages(conversationId: string) {
 export function sendMessageStream(
   conversationId: string,
   content: string,
-  callbacks: {
-    onThinking?: (chunk: string) => void
-    onContent?: (chunk: string) => void
-    onDone?: (data: { id: number; content: string; thinking: string; created_at: string }) => void
-    onError?: (error: Error) => void
-  },
+  callbacks: StreamCallbacks,
 ): AbortController {
   const controller = new AbortController()
   const baseUrl = getBaseUrl()
@@ -78,6 +108,10 @@ export function sendMessageStream(
                 callbacks.onThinking(parsed.content)
               } else if (currentEvent === 'content' && callbacks.onContent) {
                 callbacks.onContent(parsed.content)
+              } else if (currentEvent === 'action' && callbacks.onAction) {
+                callbacks.onAction(parsed)
+              } else if (currentEvent === 'pricing' && callbacks.onPricing) {
+                callbacks.onPricing(parsed)
               } else if (currentEvent === 'done' && callbacks.onDone) {
                 callbacks.onDone(parsed)
               }
