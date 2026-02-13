@@ -1,5 +1,36 @@
 <template>
   <view class="chat-page">
+    <!-- Header -->
+    <view class="chat-header">
+      <view class="header-left" @click="showDrawer = !showDrawer">
+        <text class="menu-icon">☰</text>
+      </view>
+      <text class="header-title">{{ currentTitle }}</text>
+      <view class="header-right" @click="handleNewChat">
+        <text class="new-icon">+</text>
+      </view>
+    </view>
+
+    <!-- Conversation drawer -->
+    <view v-if="showDrawer" class="drawer-mask" @click="showDrawer = false">
+      <view class="drawer-panel" @click.stop>
+        <view class="drawer-title">历史会话</view>
+        <scroll-view scroll-y class="drawer-list">
+          <view
+            v-for="conv in chatStore.conversations"
+            :key="conv.id"
+            :class="['drawer-item', { active: conv.id === chatStore.currentConversationId }]"
+            @click="handleSwitchConv(conv.id)"
+          >
+            <text class="drawer-item-title">{{ conv.title || '新对话' }}</text>
+          </view>
+          <view v-if="chatStore.conversations.length === 0" class="drawer-empty">
+            <text>暂无历史会话</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+
     <!-- Message area -->
     <scroll-view
       scroll-y
@@ -13,7 +44,7 @@
            <view class="welcome-icon">✨</view>
           <text class="welcome-title">你好, 我是 BetaStay 助手</text>
           <text class="welcome-desc">我可以帮你分析房源定价、管理房源信息，或回答民宿运营相关问题。</text>
-          
+
           <view class="suggestion-chips">
             <view class="chip" @click="quickAsk('帮我分析一下我的房源价格')">
               <text class="chip-icon">💰</text>
@@ -31,12 +62,20 @@
         </view>
 
         <!-- Messages -->
-        <ChatBubble
-          v-for="(msg, idx) in chatStore.messages"
-          :key="idx"
-          :message="msg"
-          :is-streaming="idx === chatStore.messages.length - 1 && chatStore.loading"
-        />
+        <template v-for="(msg, idx) in chatStore.messages" :key="idx">
+          <ChatBubble
+            :message="msg"
+            :is-streaming="idx === chatStore.messages.length - 1 && chatStore.loading"
+          />
+          <!-- 定价卡片（跟在助手消息后面） -->
+          <PriceCard
+            v-if="msg.role === 'assistant' && msg.pricing"
+            :pricing="msg.pricing"
+            @adopt="handleAdopt(msg.pricing!.pricing_record_id, $event)"
+            @reject="handleReject(msg.pricing!.pricing_record_id)"
+            @adjust="handleAdjust(msg.pricing!.pricing_record_id)"
+          />
+        </template>
 
         <!-- Loading / Thinking Indicator (Implicit in last message now, but keep fallback) -->
         <view v-if="chatStore.loading && chatStore.messages.length === 0" class="status-tip">
@@ -48,13 +87,21 @@
       </view>
     </scroll-view>
 
+    <!-- Confirm panel -->
+    <ConfirmPanel
+      :visible="!!chatStore.pendingAction"
+      :data="chatStore.pendingAction?.display?.items || {}"
+      @confirm="handleConfirmAction"
+      @cancel="chatStore.cancelPendingAction()"
+    />
+
     <!-- Floating Input Area -->
     <view class="input-section">
       <view class="input-card">
         <view class="icon-btn-left">
           <text class="action-icon">⊕</text>
         </view>
-        
+
         <input
           v-model="inputText"
           class="chat-input"
@@ -64,12 +111,12 @@
           :disabled="chatStore.loading"
           placeholder-style="color: #94A3B8;"
         />
-        
+
         <view class="right-actions">
            <view v-if="!inputText" class="icon-btn-right">
              <text class="action-icon">🎤</text>
            </view>
-           <view 
+           <view
              v-else
              :class="['send-btn', { disabled: chatStore.loading }]"
              @click="handleSend"
@@ -83,13 +130,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore } from '../../stores/chat'
 import ChatBubble from '../../components/ChatBubble.vue'
+import PriceCard from '../../components/PriceCard.vue'
+import ConfirmPanel from '../../components/ConfirmPanel.vue'
 
 const chatStore = useChatStore()
 const inputText = ref('')
 const scrollTop = ref(0)
+const showDrawer = ref(false)
+
+const currentTitle = computed(() => {
+  if (!chatStore.currentConversationId) return '新对话'
+  const conv = chatStore.conversations.find((c: any) => c.id === chatStore.currentConversationId)
+  return conv?.title || '对话'
+})
+
+onMounted(() => {
+  chatStore.loadConversations()
+})
 
 // Auto-scroll
 watch(
@@ -127,6 +187,45 @@ function quickAsk(text: string) {
   inputText.value = text
   handleSend()
 }
+
+// --- PriceCard handlers ---
+async function handleAdopt(pricingRecordId: number, price: number) {
+  inputText.value = `我采纳建议价 ¥${price}（定价记录ID: ${pricingRecordId}）`
+  await handleSend()
+}
+
+function handleReject(pricingRecordId: number) {
+  inputText.value = `这个定价不太合适（定价记录ID: ${pricingRecordId}）`
+  handleSend()
+}
+
+function handleAdjust(pricingRecordId: number) {
+  inputText.value = `我想手动调整价格（定价记录ID: ${pricingRecordId}），调整为 `
+  // 留给用户输入价格
+}
+
+// --- ConfirmPanel handler ---
+async function handleConfirmAction() {
+  try {
+    await chatStore.confirmPendingAction()
+    scrollToBottom()
+  } catch {
+    // 确认失败，保持弹窗
+  }
+}
+
+// --- Conversation drawer handlers ---
+function handleNewChat() {
+  chatStore.newConversation()
+  showDrawer.value = false
+}
+
+async function handleSwitchConv(convId: string) {
+  await chatStore.switchConversation(convId)
+  showDrawer.value = false
+  await nextTick()
+  scrollToBottom()
+}
 </script>
 
 <style scoped lang="scss">
@@ -138,9 +237,97 @@ function quickAsk(text: string) {
   overflow: hidden;
 }
 
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24rpx;
+  height: 88rpx;
+  background: #fff;
+  border-bottom: 1rpx solid $uni-border-color;
+  flex-shrink: 0;
+}
+
+.header-left, .header-right {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-icon, .new-icon {
+  font-size: 40rpx;
+  color: $uni-text-color;
+}
+
+.header-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: $uni-color-title;
+}
+
+.drawer-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 998;
+}
+
+.drawer-panel {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 70%;
+  max-width: 600rpx;
+  background: #fff;
+  padding: 40rpx 0;
+  box-shadow: 4rpx 0 16rpx rgba(0,0,0,0.1);
+}
+
+.drawer-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  padding: 0 32rpx 24rpx;
+  border-bottom: 1rpx solid $uni-border-color;
+  color: $uni-color-title;
+}
+
+.drawer-list {
+  height: calc(100% - 80rpx);
+}
+
+.drawer-item {
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+  transition: background 0.2s;
+
+  &.active {
+    background: rgba($uni-color-primary, 0.08);
+  }
+
+  &:active {
+    background: $uni-bg-color-hover;
+  }
+}
+
+.drawer-item-title {
+  font-size: 28rpx;
+  color: $uni-text-color;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-empty {
+  padding: 60rpx 32rpx;
+  text-align: center;
+  color: $uni-text-color-placeholder;
+  font-size: 26rpx;
+}
+
 .message-list {
   flex: 1;
-  height: 0; 
+  height: 0;
   width: 100%;
 }
 
@@ -213,7 +400,7 @@ function quickAsk(text: string) {
   align-items: center;
   gap: 12rpx;
   transition: all 0.2s;
-  
+
   &:active {
     background: #F1F5F9;
     transform: scale(0.98);
@@ -245,7 +432,7 @@ function quickAsk(text: string) {
   box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.08);
   border: 1rpx solid #E2E8F0;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  
+
   &:focus-within {
     box-shadow: 0 12rpx 32rpx rgba(26, 75, 156, 0.1);
     border-color: rgba(26, 75, 156, 0.2);
@@ -286,11 +473,11 @@ function quickAsk(text: string) {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  
+
   &.disabled {
     background: #CBD5E1;
   }
-  
+
   &:active:not(.disabled) {
     transform: scale(0.9);
   }
