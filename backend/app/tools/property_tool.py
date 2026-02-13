@@ -68,20 +68,39 @@ async def property_create(
     vacancy_tolerance: float | None = None,
 ) -> dict:
     """录入新的民宿房源信息。需要提供房源名称、地址、房型、面积等基础信息，以及房东偏好（最低价、最高价、期望收益率、空置容忍度）。返回的数据需要用户确认后才会入库。"""
+    # 基础验证
+    if area <= 0:
+        return {"success": False, "error": "面积必须大于0"}
+    if min_price is not None and max_price is not None and min_price > max_price:
+        return {"success": False, "error": "最低价不能大于最高价"}
+
+    data = {
+        "name": name,
+        "address": address,
+        "room_type": room_type,
+        "area": area,
+        "facilities": facilities or {},
+        "description": description,
+        "min_price": min_price,
+        "max_price": max_price,
+        "expected_return_rate": expected_return_rate,
+        "vacancy_tolerance": vacancy_tolerance,
+    }
+
     return {
         "action": "create_property",
         "pending_confirmation": True,
-        "data": {
-            "name": name,
-            "address": address,
-            "room_type": room_type,
-            "area": area,
-            "facilities": facilities or {},
-            "description": description,
-            "min_price": min_price,
-            "max_price": max_price,
-            "expected_return_rate": expected_return_rate,
-            "vacancy_tolerance": vacancy_tolerance,
+        "data": data,
+        "display": {
+            "title": "新建房源",
+            "items": {
+                "名称": name,
+                "地址": address,
+                "房型": room_type,
+                "面积": f"{area}㎡",
+                "最低价": f"¥{min_price}" if min_price else "未设置",
+                "最高价": f"¥{max_price}" if max_price else "未设置",
+            },
         },
     }
 
