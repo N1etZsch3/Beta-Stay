@@ -3,7 +3,8 @@
 		{ "path": "pages/index/index", "style": { "navigationBarTitleText": "BetaStay" } },
 		{ "path": "pages/chat/index", "style": { "navigationBarTitleText": "智能助手" } },
 		{ "path": "pages/property/index", "style": { "navigationBarTitleText": "房源管理" } },
-		{ "path": "pages/history/index", "style": { "navigationBarTitleText": "定价历史" } }
+		{ "path": "pages/history/index", "style": { "navigationBarTitleText": "定价历史" } },
+		{ "path": "pages/property/form", "style": { "navigationBarTitleText": "编辑房源" } }
 	],
 	"tabBar": {
 		"list": [

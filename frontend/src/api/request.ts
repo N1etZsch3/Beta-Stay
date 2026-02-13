@@ -4,6 +4,7 @@ interface RequestOptions {
   url: string
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   data?: any
+  timeout?: number
 }
 
 export async function request<T = any>(options: RequestOptions): Promise<T> {
@@ -12,6 +13,7 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
       url: `${BASE_URL}${options.url}`,
       method: options.method || 'GET',
       data: options.data,
+      timeout: options.timeout || 60000,
       header: { 'Content-Type': 'application/json' },
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -23,4 +25,8 @@ export async function request<T = any>(options: RequestOptions): Promise<T> {
       fail: (err) => reject(err),
     })
   })
+}
+
+export function getBaseUrl() {
+  return BASE_URL
 }
