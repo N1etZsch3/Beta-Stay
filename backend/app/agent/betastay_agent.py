@@ -22,8 +22,9 @@ def create_betastay_agent(checkpointer=None):
     """创建BetaStay Agent实例"""
     model = ChatTongyi(
         model=settings.DASHSCOPE_MODEL,
-        dashscope_api_key=settings.DASHSCOPE_API_KEY,
-        temperature=0.1,
+        streaming=True,
+        model_kwargs={"enable_thinking": True, "incremental_output": True},
+        api_key=settings.DASHSCOPE_API_KEY,
     )
 
     agent = create_agent(

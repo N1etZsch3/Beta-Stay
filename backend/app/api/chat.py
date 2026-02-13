@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -43,10 +44,29 @@ async def list_conversations(db: AsyncSession = Depends(get_db)):
 
 @router.post("/conversations/{conversation_id}/messages")
 async def send_message(conversation_id: int, data: MessageSend, db: AsyncSession = Depends(get_db)):
+    """非流式发送消息（保留兼容）"""
     conv = await conversation_service.get_conversation(db, conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return await chat_service.process_message(db, conversation_id, data.content)
+
+
+@router.post("/conversations/{conversation_id}/messages/stream")
+async def send_message_stream(conversation_id: int, data: MessageSend, db: AsyncSession = Depends(get_db)):
+    """流式发送消息，返回SSE事件流"""
+    conv = await conversation_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return StreamingResponse(
+        chat_service.stream_message(db, conversation_id, data.content),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/conversations/{conversation_id}/messages")
