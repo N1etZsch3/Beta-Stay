@@ -8,7 +8,7 @@ export function listConversations() {
   return request({ url: '/chat/conversations' })
 }
 
-export function sendMessage(conversationId: number, content: string) {
+export function sendMessage(conversationId: string, content: string) {
   return request({
     url: `/chat/conversations/${conversationId}/messages`,
     method: 'POST',
@@ -17,7 +17,7 @@ export function sendMessage(conversationId: number, content: string) {
   })
 }
 
-export function getMessages(conversationId: number) {
+export function getMessages(conversationId: string) {
   return request({ url: `/chat/conversations/${conversationId}/messages` })
 }
 
@@ -26,7 +26,7 @@ export function getMessages(conversationId: number) {
  * 使用 fetch + ReadableStream 读取 SSE 事件流
  */
 export function sendMessageStream(
-  conversationId: number,
+  conversationId: string,
   content: string,
   callbacks: {
     onThinking?: (chunk: string) => void

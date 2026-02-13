@@ -1,8 +1,7 @@
-from app.models.property import Property
-from app.models.pricing import PricingRecord
-from app.models.feedback import Feedback
-from app.models.transaction import Transaction
 from app.models.conversation import Conversation, Message
+from app.models.feedback import Feedback
+from app.models.pricing import PricingRecord
+from app.models.property import Property
 
 
 def test_property_model_fields():
@@ -22,6 +21,7 @@ def test_property_model_fields():
 
 def test_pricing_record_model_fields():
     from datetime import date
+
     pr = PricingRecord(
         property_id=1,
         target_date=date(2026, 5, 1),
@@ -49,7 +49,7 @@ def test_conversation_and_message_fields():
     assert c.title == "定价咨询"
 
     m = Message(
-        conversation_id=1,
+        conversation_id="test-uuid-placeholder",
         role="user",
         content="帮我看看明天的建议价",
     )

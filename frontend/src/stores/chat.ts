@@ -12,7 +12,7 @@ export interface ChatMessage {
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<any[]>([])
-  const currentConversationId = ref<number | null>(null)
+  const currentConversationId = ref<string | null>(null)
   const messages = ref<ChatMessage[]>([])
   const loading = ref(false)
   const thinking = ref(false)
@@ -97,7 +97,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function loadMessages(conversationId: number) {
+  async function loadMessages(conversationId: string) {
     currentConversationId.value = conversationId
     messages.value = await chatApi.getMessages(conversationId)
   }

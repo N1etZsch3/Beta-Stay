@@ -1,12 +1,23 @@
+import re
+
 import pytest
+
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
 
 
 @pytest.mark.asyncio
 async def test_create_conversation(client):
-    response = await client.post("/api/v1/chat/conversations", json={"title": "定价咨询"})
+    response = await client.post(
+        "/api/v1/chat/conversations", json={"title": "定价咨询"}
+    )
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] is not None
+    assert isinstance(data["id"], str)
+    assert UUID_PATTERN.match(data["id"]), (
+        f"id should be UUID format, got: {data['id']}"
+    )
     assert data["title"] == "定价咨询"
 
 
@@ -42,7 +53,9 @@ async def test_send_message(client):
 
 @pytest.mark.asyncio
 async def test_get_conversation_history(client):
-    conv_resp = await client.post("/api/v1/chat/conversations", json={"title": "历史测试"})
+    conv_resp = await client.post(
+        "/api/v1/chat/conversations", json={"title": "历史测试"}
+    )
     conv_id = conv_resp.json()["id"]
 
     # Send a message

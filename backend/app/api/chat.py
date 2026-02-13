@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
-from app.services import conversation_service, chat_service
+from app.services import chat_service, conversation_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -13,7 +14,7 @@ class ConversationCreate(BaseModel):
 
 
 class ConversationResponse(BaseModel):
-    id: int
+    id: str
     title: str | None
     status: str
     model_config = {"from_attributes": True}
@@ -32,7 +33,9 @@ class MessageResponse(BaseModel):
 
 
 @router.post("/conversations", response_model=ConversationResponse)
-async def create_conversation(data: ConversationCreate, db: AsyncSession = Depends(get_db)):
+async def create_conversation(
+    data: ConversationCreate, db: AsyncSession = Depends(get_db)
+):
     conv = await conversation_service.create_conversation(db, data.title)
     return conv
 
@@ -43,7 +46,9 @@ async def list_conversations(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/conversations/{conversation_id}/messages")
-async def send_message(conversation_id: int, data: MessageSend, db: AsyncSession = Depends(get_db)):
+async def send_message(
+    conversation_id: str, data: MessageSend, db: AsyncSession = Depends(get_db)
+):
     """非流式发送消息（保留兼容）"""
     conv = await conversation_service.get_conversation(db, conversation_id)
     if not conv:
@@ -52,7 +57,9 @@ async def send_message(conversation_id: int, data: MessageSend, db: AsyncSession
 
 
 @router.post("/conversations/{conversation_id}/messages/stream")
-async def send_message_stream(conversation_id: int, data: MessageSend, db: AsyncSession = Depends(get_db)):
+async def send_message_stream(
+    conversation_id: str, data: MessageSend, db: AsyncSession = Depends(get_db)
+):
     """流式发送消息，返回SSE事件流"""
     conv = await conversation_service.get_conversation(db, conversation_id)
     if not conv:
@@ -70,7 +77,7 @@ async def send_message_stream(conversation_id: int, data: MessageSend, db: Async
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def get_messages(conversation_id: int, db: AsyncSession = Depends(get_db)):
+async def get_messages(conversation_id: str, db: AsyncSession = Depends(get_db)):
     messages = await conversation_service.get_messages(db, conversation_id)
     return [
         {

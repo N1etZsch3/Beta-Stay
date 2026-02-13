@@ -1,10 +1,14 @@
 import json
 from typing import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.services.conversation_service import get_messages, save_message
 
 
-async def process_message(db: AsyncSession, conversation_id: int, user_content: str) -> dict:
+async def process_message(
+    db: AsyncSession, conversation_id: str, user_content: str
+) -> dict:
     """处理用户消息（非流式）：保存消息 → 构建历史 → 调用Agent → 保存回复"""
     # 1. 保存用户消息
     await save_message(db, conversation_id, "user", user_content)
@@ -49,7 +53,9 @@ async def process_message(db: AsyncSession, conversation_id: int, user_content: 
     }
 
 
-async def stream_message(db: AsyncSession, conversation_id: int, user_content: str) -> AsyncGenerator[str, None]:
+async def stream_message(
+    db: AsyncSession, conversation_id: str, user_content: str
+) -> AsyncGenerator[str, None]:
     """流式处理用户消息，yield SSE格式事件"""
     # 1. 保存用户消息
     await save_message(db, conversation_id, "user", user_content)
