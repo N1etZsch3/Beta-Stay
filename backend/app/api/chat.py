@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.services import chat_service, conversation_service
+from app.services import chat_service, conversation_service, property_service, feedback_service
+from app.services.action_store import pop_pending_action
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -22,6 +23,10 @@ class ConversationResponse(BaseModel):
 
 class MessageSend(BaseModel):
     content: str
+
+
+class ConfirmAction(BaseModel):
+    action_id: str
 
 
 class MessageResponse(BaseModel):
@@ -88,3 +93,41 @@ async def get_messages(conversation_id: str, db: AsyncSession = Depends(get_db))
         }
         for m in messages
     ]
+
+
+@router.post("/conversations/{conversation_id}/confirm")
+async def confirm_action(
+    conversation_id: str, data: ConfirmAction, db: AsyncSession = Depends(get_db)
+):
+    """用户确认待执行操作"""
+    action = pop_pending_action(data.action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="操作已过期或不存在")
+    if action["conversation_id"] != conversation_id:
+        raise HTTPException(status_code=400, detail="操作不属于当前会话")
+
+    action_type = action["action_type"]
+    action_data = action["data"]
+
+    if action_type == "create_property":
+        result = await property_service.create_property(db, action_data)
+        await conversation_service.save_message(
+            db,
+            conversation_id,
+            "assistant",
+            f"房源「{result.name}」已成功录入（ID: {result.id}）",
+        )
+        return {"success": True, "type": "property", "id": result.id, "name": result.name}
+
+    elif action_type == "record_feedback":
+        result = await feedback_service.create_feedback(db, action_data)
+        await conversation_service.save_message(
+            db,
+            conversation_id,
+            "assistant",
+            f"反馈已记录（ID: {result.id}，类型: {result.feedback_type}）",
+        )
+        return {"success": True, "type": "feedback", "id": result.id}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"未知操作类型: {action_type}")
