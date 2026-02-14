@@ -6,6 +6,7 @@ from app.tools.property_tool import property_create_tool, property_query_tool, s
 from app.tools.pricing_tool import pricing_calculate_tool
 from app.tools.feedback_tool import feedback_record_tool
 from app.tools.excel_tool import excel_parse_tool
+from app.tools.datetime_tool import get_current_time_tool
 
 
 def get_tools():
@@ -16,6 +17,7 @@ def get_tools():
         pricing_calculate_tool,
         feedback_record_tool,
         excel_parse_tool,
+        get_current_time_tool,
     ]
 
 
