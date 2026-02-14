@@ -348,7 +348,7 @@ function formatDate(isoStr: string) {
 
 /* Custom Header — uses system primary gradient */
 .custom-header {
-  background: linear-gradient(135deg, $uni-color-primary 0%, lighten($uni-color-primary, 12%) 100%);
+  background: linear-gradient(135deg, $uni-color-primary 0%, $uni-color-primary-light-12 100%);
   color: #fff;
   z-index: 100;
   box-shadow: 0 2px 8px rgba(26, 75, 156, 0.25);
@@ -435,7 +435,7 @@ function formatDate(isoStr: string) {
   padding-left: 24px;
   display: flex;
   align-items: center;
-  background: linear-gradient(135deg, $uni-color-primary 0%, lighten($uni-color-primary, 12%) 100%);
+  background: linear-gradient(135deg, $uni-color-primary 0%, $uni-color-primary-light-12 100%);
 }
 
 .sidebar-title {
@@ -570,7 +570,7 @@ function formatDate(isoStr: string) {
 .avatar {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, $uni-color-primary, lighten($uni-color-primary, 15%));
+  background: linear-gradient(135deg, $uni-color-primary, $uni-color-primary-light-15);
   border-radius: 50%;
   color: #fff;
   display: flex;

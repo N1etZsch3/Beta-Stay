@@ -143,7 +143,7 @@ function formatDate(iso: string) {
 .header-section {
   position: relative;
   height: 360rpx;
-  background: linear-gradient(135deg, $uni-color-primary 0%, lighten($uni-color-primary, 15%) 100%);
+  background: linear-gradient(135deg, $uni-color-primary 0%, $uni-color-primary-light-15 100%);
   border-bottom-left-radius: 40rpx;
   border-bottom-right-radius: 40rpx;
   overflow: hidden;
@@ -267,7 +267,7 @@ function formatDate(iso: string) {
   transition: all 0.2s;
   
   &.primary {
-    background: linear-gradient(135deg, lighten($uni-color-primary, 5%) 0%, $uni-color-primary 100%);
+    background: linear-gradient(135deg, $uni-color-primary-light-5 0%, $uni-color-primary 100%);
     
     .action-title { color: #fff; }
     .action-desc { color: rgba(255,255,255,0.8); }

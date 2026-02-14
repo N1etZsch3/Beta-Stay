@@ -334,7 +334,7 @@ function submitEdit() {
 
 /* User Bubble */
 .user-bubble {
-  background: linear-gradient(135deg, $uni-color-primary, lighten($uni-color-primary, 10%));
+  background: linear-gradient(135deg, $uni-color-primary, $uni-color-primary-light-10);
   color: #fff;
   padding: 24rpx 32rpx;
   border-radius: 36rpx;
