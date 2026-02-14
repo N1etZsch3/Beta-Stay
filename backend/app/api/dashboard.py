@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -16,7 +18,12 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)):
     property_count = prop_count.scalar() or 0
 
     # Recent pricing count (last 30 days)
-    pricing_count_result = await db.execute(select(func.count(PricingRecord.id)))
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    pricing_count_result = await db.execute(
+        select(func.count(PricingRecord.id)).where(
+            PricingRecord.created_at >= thirty_days_ago
+        )
+    )
     recent_pricing_count = pricing_count_result.scalar() or 0
 
     # Feedback count

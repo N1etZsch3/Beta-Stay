@@ -30,6 +30,15 @@ class MessageSend(BaseModel):
     content: str
 
 
+class MessageEdit(BaseModel):
+    message_id: int
+    content: str
+
+
+class MessageRegenerate(BaseModel):
+    message_id: int
+
+
 class ConfirmAction(BaseModel):
     action_id: str
 
@@ -94,6 +103,46 @@ async def send_message_stream(
     )
 
 
+@router.post("/conversations/{conversation_id}/messages/edit")
+async def edit_message_stream(
+    conversation_id: str, data: MessageEdit, db: AsyncSession = Depends(get_db)
+):
+    """编辑消息后重新生成，返回SSE事件流"""
+    conv = await conversation_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return StreamingResponse(
+        chat_service.stream_edit(db, conversation_id, data.message_id, data.content),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/conversations/{conversation_id}/messages/regenerate")
+async def regenerate_message_stream(
+    conversation_id: str, data: MessageRegenerate, db: AsyncSession = Depends(get_db)
+):
+    """重新生成AI回复，返回SSE事件流"""
+    conv = await conversation_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return StreamingResponse(
+        chat_service.stream_regenerate(db, conversation_id, data.message_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/conversations/{conversation_id}/messages")
 async def get_messages(conversation_id: str, db: AsyncSession = Depends(get_db)):
     messages = await conversation_service.get_messages(db, conversation_id)
@@ -113,7 +162,7 @@ async def confirm_action(
     conversation_id: str, data: ConfirmAction, db: AsyncSession = Depends(get_db)
 ):
     """用户确认待执行操作"""
-    action = pop_pending_action(data.action_id)
+    action = await pop_pending_action(db, data.action_id)
     if not action:
         raise HTTPException(status_code=404, detail="操作已过期或不存在")
     if action["conversation_id"] != conversation_id:

@@ -95,3 +95,16 @@ async def delete_conversation(db: AsyncSession, conversation_id: str) -> bool:
     await db.delete(conv)
     await db.commit()
     return True
+
+
+async def delete_messages_from_id(
+    db: AsyncSession, conversation_id: str, from_message_id: int
+) -> None:
+    """删除 id >= from_message_id 的所有消息（供 edit/regenerate 使用）"""
+    await db.execute(
+        sa_delete(Message).where(
+            Message.conversation_id == conversation_id,
+            Message.id >= from_message_id,
+        )
+    )
+    await db.commit()

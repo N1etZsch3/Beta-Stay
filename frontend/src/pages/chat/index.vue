@@ -57,8 +57,9 @@
     <scroll-view
       scroll-y
       class="message-list"
-      :scroll-top="scrollTop"
-      :scroll-with-animation="true"
+      :scroll-into-view="scrollIntoId"
+      :scroll-with-animation="!chatStore.loading"
+      @touchmove="onScrollTouchMove"
     >
       <view class="list-padding">
         <!-- Empty State -->
@@ -88,6 +89,8 @@
           <ChatBubble
             :message="msg"
             :is-streaming="idx === chatStore.messages.length - 1 && chatStore.loading"
+            @edit="handleEditMessage"
+            @regenerate="handleRegenerateMessage"
           />
           <PriceCard
             v-if="msg.role === 'assistant' && msg.pricing"
@@ -96,12 +99,20 @@
             @reject="handleReject(msg.pricing!.pricing_record_id)"
             @adjust="handleAdjust(msg.pricing!.pricing_record_id)"
           />
+          <PropertyFormCard
+            v-if="msg.role === 'assistant' && msg.form"
+            :form="msg.form"
+            @submit="handlePropertyFormSubmit(idx, $event)"
+          />
         </template>
 
         <!-- Loading / Thinking Indicator -->
         <view v-if="chatStore.loading && chatStore.messages.length === 0" class="status-tip">
            <text>AI正在准备...</text>
         </view>
+        
+        <!-- 底部锚点，用于 scroll-into-view -->
+        <view id="bottom-anchor" style="height: 4px;"></view>
       </view>
     </scroll-view>
 
@@ -117,13 +128,21 @@
           :disabled="chatStore.loading"
           placeholder-style="color: #94A3B8;"
         />
-        
+
         <view class="right-actions">
-           <view 
-             :class="['send-btn', { disabled: !inputText.trim() || chatStore.loading }]"
+           <view
+             v-if="!chatStore.loading"
+             :class="['send-btn', { disabled: !inputText.trim() }]"
              @click="handleSend"
            >
             <text class="send-icon">↑</text>
+           </view>
+           <view
+             v-else
+             class="stop-btn"
+             @click="chatStore.stopGeneration()"
+           >
+            <text class="stop-icon">■</text>
            </view>
         </view>
       </view>
@@ -145,17 +164,19 @@ import { useChatStore } from '../../stores/chat'
 import ChatBubble from '../../components/ChatBubble.vue'
 import PriceCard from '../../components/PriceCard.vue'
 import ConfirmPanel from '../../components/ConfirmPanel.vue'
+import PropertyFormCard from '../../components/PropertyFormCard.vue'
 
 const chatStore = useChatStore()
 const inputText = ref('')
-const scrollTop = ref(0)
+const scrollIntoId = ref('')
 const showSidebar = ref(false)
+const autoScroll = ref(true)
 
 onMounted(() => {
   chatStore.loadConversations()
 })
 
-// Auto-scroll
+// Auto-scroll: 流式内容更新时持续滚动到底部
 watch(
   () => [chatStore.messages.length, chatStore.messages.at(-1)?.content],
   async () => {
@@ -171,8 +192,27 @@ watch(() => chatStore.thinking, async () => {
   scrollToBottom()
 })
 
-function scrollToBottom() {
-  scrollTop.value = scrollTop.value + 1
+// 流式结束时重置 autoScroll，为下次对话做准备
+watch(() => chatStore.loading, (isLoading) => {
+  if (!isLoading) {
+    autoScroll.value = true
+  }
+})
+
+// 用户在流式过程中主动滑动 → 解锁自动滚动
+function onScrollTouchMove() {
+  if (chatStore.loading) {
+    autoScroll.value = false
+  }
+}
+
+function scrollToBottom(force = false) {
+  if (!force && !autoScroll.value) return
+  // 先清空再设置，强制触发 scroll-into-view 更新
+  scrollIntoId.value = ''
+  nextTick(() => {
+    scrollIntoId.value = 'bottom-anchor'
+  })
 }
 
 async function handleSend() {
@@ -180,9 +220,10 @@ async function handleSend() {
   if (!text || chatStore.loading) return
 
   inputText.value = ''
-  // 立即滚动到底部，让用户消息可见
+  // 发送新消息时重置 autoScroll 并立即滚动到底部
+  autoScroll.value = true
   await nextTick()
-  scrollToBottom()
+  scrollToBottom(true)
   try {
     await chatStore.sendMessage(text)
   } catch {
@@ -253,6 +294,41 @@ async function handleConfirmAction() {
   }
 }
 
+// --- Edit / Regenerate handlers ---
+async function handleEditMessage(messageId: number, newContent: string) {
+  autoScroll.value = true
+  await nextTick()
+  scrollToBottom(true)
+  try {
+    await chatStore.editMessage(messageId, newContent)
+  } catch {
+    // Error handled in store
+  }
+}
+
+async function handleRegenerateMessage(messageId: number) {
+  autoScroll.value = true
+  await nextTick()
+  scrollToBottom(true)
+  try {
+    await chatStore.regenerateMessage(messageId)
+  } catch {
+    // Error handled in store
+  }
+}
+
+// --- PropertyFormCard handler ---
+async function handlePropertyFormSubmit(msgIdx: number, formData: Record<string, any>) {
+  autoScroll.value = true
+  await nextTick()
+  scrollToBottom(true)
+  try {
+    await chatStore.submitPropertyForm(formData, msgIdx)
+  } catch {
+    // Error handled in store
+  }
+}
+
 function formatDate(isoStr: string) {
   if (!isoStr) return ''
   const d = new Date(isoStr)
@@ -270,12 +346,12 @@ function formatDate(isoStr: string) {
   position: relative;
 }
 
-/* Custom Header */
+/* Custom Header — uses system primary gradient */
 .custom-header {
-  background-color: #1a1a1a; 
+  background: linear-gradient(135deg, $uni-color-primary 0%, lighten($uni-color-primary, 12%) 100%);
   color: #fff;
   z-index: 100;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 8px rgba(26, 75, 156, 0.25);
   flex-shrink: 0;
 }
 
@@ -293,9 +369,10 @@ function formatDate(isoStr: string) {
 }
 
 .header-title {
-  font-size: 16px; 
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: #fff;
+  letter-spacing: 0.5px;
 }
 
 .header-left, .header-right {
@@ -313,7 +390,7 @@ function formatDate(isoStr: string) {
 .header-icon {
   font-size: 24px; 
   font-weight: 300;
-  color: #fff;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 /* Sidebar */
@@ -339,13 +416,13 @@ function formatDate(isoStr: string) {
   bottom: 0;
   width: 280px; 
   max-width: 80%;
-  background: #1c1c1e; 
+  background: $uni-bg-color;
   z-index: 901;
   transform: translateX(-100%);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+  box-shadow: 4px 0 24px rgba(0,0,0,0.12);
   
   &.show {
     transform: translateX(0);
@@ -358,11 +435,12 @@ function formatDate(isoStr: string) {
   padding-left: 24px;
   display: flex;
   align-items: center;
+  background: linear-gradient(135deg, $uni-color-primary 0%, lighten($uni-color-primary, 12%) 100%);
 }
 
 .sidebar-title {
   color: #fff;
-  font-size: 24px; 
+  font-size: 22px; 
   font-weight: 700;
   letter-spacing: 0.5px;
 }
@@ -375,7 +453,7 @@ function formatDate(isoStr: string) {
   overflow: hidden;
 }
 
-/* Sidebar Item - Hover/Active Only */
+/* Sidebar Item */
 .sidebar-item {
   padding: 12px 10px 12px 16px;
   margin-bottom: 4px; 
@@ -387,11 +465,11 @@ function formatDate(isoStr: string) {
   transition: all 0.2s;
   
   &:active {
-    background: rgba(255, 255, 255, 0.08);
+    background: $uni-bg-color-hover;
   }
   
   &.active {
-    background: transparent; 
+    background: rgba($uni-color-primary, 0.06); 
     
     .conv-title {
       color: $uni-color-primary;
@@ -415,13 +493,13 @@ function formatDate(isoStr: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,0.1);
+  background: $uni-bg-color-hover;
   transition: background 0.2s;
 }
 
 .item-icon {
   font-size: 20px;
-  color: #8e8e93;
+  color: $uni-text-color-grey;
 }
 
 .item-info {
@@ -434,7 +512,7 @@ function formatDate(isoStr: string) {
 
 .conv-title {
   font-size: 16px;
-  color: #e5e5e7;
+  color: $uni-color-title;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -442,7 +520,7 @@ function formatDate(isoStr: string) {
 
 .conv-date {
   font-size: 12px;
-  color: #8e8e93;
+  color: $uni-text-color-placeholder;
 }
 
 .delete-btn {
@@ -469,7 +547,7 @@ function formatDate(isoStr: string) {
 .empty-history {
   padding: 40px;
   text-align: center;
-  color: #636366;
+  color: $uni-text-color-placeholder;
   font-size: 14px;
 }
 
@@ -479,7 +557,8 @@ function formatDate(isoStr: string) {
   /* Add padding for TabBar + Safe Area */
   padding-bottom: calc(50px + 24px + constant(safe-area-inset-bottom));
   padding-bottom: calc(50px + 24px + env(safe-area-inset-bottom));
-  background: rgba(28, 28, 30, 0.9);
+  background: $uni-bg-color;
+  border-top: 1px solid $uni-border-color;
 }
 
 .user-profile {
@@ -491,7 +570,7 @@ function formatDate(isoStr: string) {
 .avatar {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, $uni-color-primary, lighten($uni-color-primary, 15%));
   border-radius: 50%;
   color: #fff;
   display: flex;
@@ -502,7 +581,7 @@ function formatDate(isoStr: string) {
 }
 
 .username {
-  color: #fff;
+  color: $uni-color-title;
   font-size: 16px;
   font-weight: 500;
 }
@@ -663,6 +742,27 @@ function formatDate(isoStr: string) {
   color: #fff;
   font-size: 36rpx;
   font-weight: bold;
+}
+
+.stop-btn {
+  width: 72rpx;
+  height: 72rpx;
+  background: #EF4444;
+  border-radius: 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:active {
+    transform: scale(0.9);
+    background: #DC2626;
+  }
+}
+
+.stop-icon {
+  color: #fff;
+  font-size: 28rpx;
 }
 
 .status-tip {

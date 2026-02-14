@@ -97,8 +97,49 @@ class PricingEngine:
         return adj
 
     def _calc_historical(self, data: dict) -> float:
-        """根据历史表现计算调整系数（MVP预留）"""
-        return 0.0
+        """根据历史交易和反馈计算调整系数"""
+        transactions = data.get("transactions", [])
+        feedbacks = data.get("feedbacks", [])
+
+        # Transaction trend signal: compare recent half vs older half avg price
+        tx_signal = 0.0
+        if len(transactions) >= 2:
+            mid = len(transactions) // 2
+            older_avg = sum(t["actual_price"] for t in transactions[:mid]) / mid
+            recent_avg = sum(t["actual_price"] for t in transactions[mid:]) / (len(transactions) - mid)
+            if older_avg > 0:
+                tx_signal = (recent_avg - older_avg) / older_avg
+                tx_signal = max(-0.3, min(0.3, tx_signal))
+
+        # Feedback signal
+        fb_signal = 0.0
+        if feedbacks:
+            accepted = sum(1 for f in feedbacks if f["feedback_type"] == "采纳")
+            rejected = sum(1 for f in feedbacks if f["feedback_type"] == "拒绝")
+            adjusted = [f for f in feedbacks if f["feedback_type"] == "调整"]
+            total = len(feedbacks)
+
+            accept_rate = accepted / total
+            reject_rate = rejected / total
+
+            # Acceptance → slight upward; rejection → downward
+            fb_signal += accept_rate * 0.1
+            fb_signal -= reject_rate * 0.15
+
+            # Adjustments: if actual_price > suggested → user wanted higher
+            for f in adjusted:
+                if f.get("actual_price") and f.get("suggested_price"):
+                    if f["actual_price"] > f["suggested_price"]:
+                        fb_signal += 0.05 / total
+                    else:
+                        fb_signal -= 0.05 / total
+
+        signals = []
+        if transactions:
+            signals.append(tx_signal)
+        if feedbacks:
+            signals.append(fb_signal)
+        return sum(signals) / len(signals) if signals else 0.0
 
     def _calc_time_factor(self, target_date: date) -> float:
         """根据日期计算时间因素调整系数"""
@@ -116,8 +157,18 @@ class PricingEngine:
         return TIME_FACTORS["weekday_multiplier"] - 1.0
 
     def _calc_market(self, data: dict) -> float:
-        """市场因素调整（MVP预留）"""
-        return 0.0
+        """根据同类房源市场数据计算调整系数"""
+        similar_avg = data.get("similar_avg", 0)
+        own_avg = data.get("own_avg", 0)
+
+        if similar_avg <= 0 or own_avg <= 0:
+            return 0.0
+
+        # Positive deviation means similar properties price higher → we're underpriced
+        deviation = (similar_avg - own_avg) / similar_avg
+        # Apply 0.5 damping factor
+        adjustment = deviation * 0.5
+        return max(-0.2, min(0.2, adjustment))
 
     def _calc_property_base(self, info: dict) -> float:
         """根据房源基础属性计算调整系数"""
@@ -134,5 +185,27 @@ class PricingEngine:
         return adj
 
     def _calc_external(self, events: list[dict]) -> float:
-        """外部事件调整（MVP预留）"""
-        return 0.0
+        """根据外部事件（节假日邻近、预订紧迫度）计算调整系数"""
+        adj = 0.0
+
+        for event in events:
+            etype = event.get("type")
+
+            if etype == "holiday":
+                # Direct holiday hit
+                adj += 0.10
+            elif etype == "holiday_adjacent":
+                # Spillover effect, decays with distance (1-3 days)
+                distance = event.get("distance_days", 3)
+                adj += 0.06 * (1.0 - (distance - 1) / 3.0)
+            elif etype == "booking_urgency":
+                avg_advance = event.get("avg_advance_days", 14)
+                days_until = event.get("days_until_target", 30)
+                if avg_advance > 0 and days_until < avg_advance * 0.5:
+                    # High urgency: target date is much sooner than typical booking lead time
+                    adj += 0.05
+                elif days_until > avg_advance * 2:
+                    # Low urgency: very far out
+                    adj -= 0.03
+
+        return max(-0.15, min(0.15, adj))
